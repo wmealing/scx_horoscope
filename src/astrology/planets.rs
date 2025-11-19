@@ -1,0 +1,436 @@
+use chrono::{DateTime, Utc, Datelike};
+use astro::time;
+use astro::planet;
+use astro::lunar;
+use astro::sun;
+use astro::angle;
+
+/// Represents the planets we care about for scheduling
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Planet {
+    Sun,
+    Moon,
+    Mercury,
+    Venus,
+    Mars,
+    Jupiter,
+    Saturn,
+}
+
+impl Planet {
+    #[allow(dead_code)]
+    pub fn all() -> Vec<Planet> {
+        vec![
+            Planet::Sun,
+            Planet::Moon,
+            Planet::Mercury,
+            Planet::Venus,
+            Planet::Mars,
+            Planet::Jupiter,
+            Planet::Saturn,
+        ]
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Planet::Sun => "Sun",
+            Planet::Moon => "Moon",
+            Planet::Mercury => "Mercury",
+            Planet::Venus => "Venus",
+            Planet::Mars => "Mars",
+            Planet::Jupiter => "Jupiter",
+            Planet::Saturn => "Saturn",
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn domain(self) -> &'static str {
+        match self {
+            Planet::Sun => "Life Force & Critical Processes",
+            Planet::Moon => "Emotions & Interactive Tasks",
+            Planet::Mercury => "Communication & Network",
+            Planet::Venus => "Harmony & Desktop/UI",
+            Planet::Mars => "Energy & CPU-Intensive",
+            Planet::Jupiter => "Expansion & Memory-Heavy",
+            Planet::Saturn => "Structure & System Tasks",
+        }
+    }
+}
+
+/// Zodiac sign
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZodiacSign {
+    Aries,
+    Taurus,
+    Gemini,
+    Cancer,
+    Leo,
+    Virgo,
+    Libra,
+    Scorpio,
+    Sagittarius,
+    Capricorn,
+    Aquarius,
+    Pisces,
+}
+
+impl ZodiacSign {
+    pub fn from_longitude(longitude: f64) -> Self {
+        let normalized = longitude.rem_euclid(360.0);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let index = normalized as u32 / 30;
+        match index {
+            0 => ZodiacSign::Aries,
+            1 => ZodiacSign::Taurus,
+            2 => ZodiacSign::Gemini,
+            3 => ZodiacSign::Cancer,
+            4 => ZodiacSign::Leo,
+            5 => ZodiacSign::Virgo,
+            6 => ZodiacSign::Libra,
+            7 => ZodiacSign::Scorpio,
+            8 => ZodiacSign::Sagittarius,
+            9 => ZodiacSign::Capricorn,
+            10 => ZodiacSign::Aquarius,
+            _ => ZodiacSign::Pisces,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            ZodiacSign::Aries => "Aries",
+            ZodiacSign::Taurus => "Taurus",
+            ZodiacSign::Gemini => "Gemini",
+            ZodiacSign::Cancer => "Cancer",
+            ZodiacSign::Leo => "Leo",
+            ZodiacSign::Virgo => "Virgo",
+            ZodiacSign::Libra => "Libra",
+            ZodiacSign::Scorpio => "Scorpio",
+            ZodiacSign::Sagittarius => "Sagittarius",
+            ZodiacSign::Capricorn => "Capricorn",
+            ZodiacSign::Aquarius => "Aquarius",
+            ZodiacSign::Pisces => "Pisces",
+        }
+    }
+
+    pub fn element(self) -> Element {
+        match self {
+            ZodiacSign::Aries | ZodiacSign::Leo | ZodiacSign::Sagittarius => Element::Fire,
+            ZodiacSign::Taurus | ZodiacSign::Virgo | ZodiacSign::Capricorn => Element::Earth,
+            ZodiacSign::Gemini | ZodiacSign::Libra | ZodiacSign::Aquarius => Element::Air,
+            ZodiacSign::Cancer | ZodiacSign::Scorpio | ZodiacSign::Pisces => Element::Water,
+        }
+    }
+}
+
+/// The four elements
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Element {
+    Fire,   // Energy, CPU
+    Earth,  // Stability, Long-running
+    Air,    // Communication, Network
+    Water,  // Fluidity, Storage/DB
+}
+
+impl Element {
+    pub fn name(self) -> &'static str {
+        match self {
+            Element::Fire => "Fire",
+            Element::Earth => "Earth",
+            Element::Air => "Air",
+            Element::Water => "Water",
+        }
+    }
+}
+
+/// Moon phases
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoonPhase {
+    NewMoon,        // 0-45°
+    WaxingCrescent, // 45-90°
+    FirstQuarter,   // 90-135°
+    WaxingGibbous,  // 135-180°
+    FullMoon,       // 180-225°
+    WaningGibbous,  // 225-270°
+    LastQuarter,    // 270-315°
+    WaningCrescent, // 315-360°
+}
+
+impl MoonPhase {
+    pub fn name(self) -> &'static str {
+        match self {
+            MoonPhase::NewMoon => "New Moon",
+            MoonPhase::WaxingCrescent => "Waxing Crescent",
+            MoonPhase::FirstQuarter => "First Quarter",
+            MoonPhase::WaxingGibbous => "Waxing Gibbous",
+            MoonPhase::FullMoon => "Full Moon",
+            MoonPhase::WaningGibbous => "Waning Gibbous",
+            MoonPhase::LastQuarter => "Last Quarter",
+            MoonPhase::WaningCrescent => "Waning Crescent",
+        }
+    }
+
+    /// Calculate moon phase from Sun-Moon angular separation
+    pub fn from_angle(angle: f64) -> Self {
+        let normalized = angle.rem_euclid(360.0);
+        match normalized {
+            a if a < 45.0 => MoonPhase::NewMoon,
+            a if a < 90.0 => MoonPhase::WaxingCrescent,
+            a if a < 135.0 => MoonPhase::FirstQuarter,
+            a if a < 180.0 => MoonPhase::WaxingGibbous,
+            a if a < 225.0 => MoonPhase::FullMoon,
+            a if a < 270.0 => MoonPhase::WaningGibbous,
+            a if a < 315.0 => MoonPhase::LastQuarter,
+            _ => MoonPhase::WaningCrescent,
+        }
+    }
+}
+
+/// Planetary position information
+#[derive(Debug, Clone)]
+pub struct PlanetaryPosition {
+    pub planet: Planet,
+    pub longitude: f64,  // Ecliptic longitude in degrees
+    pub sign: ZodiacSign,
+    pub retrograde: bool,  // True if planet is in retrograde motion
+    pub moon_phase: Option<MoonPhase>,  // Only for Moon - affects Interactive task scheduling
+}
+
+/// Convert chrono `DateTime` to astro crate's Date
+fn to_astro_date(dt: &DateTime<Utc>) -> time::Date {
+    #[allow(clippy::cast_possible_truncation)]
+    let year = dt.year() as i16;
+    #[allow(clippy::cast_possible_truncation)]
+    let month = dt.month() as u8;
+    let day = f64::from(dt.day());
+
+    time::Date {
+        year,
+        month,
+        decimal_day: day,
+        cal_type: time::CalType::Gregorian,
+    }
+}
+
+/// Detect if a planet is retrograde by comparing today's position with tomorrow's
+/// Returns true if the planet is moving backward (westward) in the sky
+fn is_retrograde(astro_planet: &planet::Planet, jd_today: f64) -> bool {
+    let jd_tomorrow = jd_today + 1.0;
+
+    let (pos_today, _) = planet::geocent_apprnt_ecl_coords(astro_planet, jd_today);
+    let (pos_tomorrow, _) = planet::geocent_apprnt_ecl_coords(astro_planet, jd_tomorrow);
+
+    let lon_today = angle::limit_to_360(pos_today.long.to_degrees());
+    let lon_tomorrow = angle::limit_to_360(pos_tomorrow.long.to_degrees());
+
+    // Handle 360° wraparound: if tomorrow crosses 0°, check if it's actually moving backward
+    let delta = lon_tomorrow - lon_today;
+
+    // If delta is large and positive (>180), planet crossed 360° going backward
+    // If delta is negative and small (>-180), planet is moving backward normally
+    if delta > 180.0 {
+        true  // Crossed 360° while retrograde (e.g., 359° -> 1°)
+    } else if delta < -180.0 {
+        false  // Crossed 360° while direct (e.g., 1° -> 359°)
+    } else {
+        delta < 0.0  // Normal case: negative delta means retrograde
+    }
+}
+
+/// Calculate planetary positions with retrograde detection
+pub fn calculate_planetary_positions(dt: DateTime<Utc>) -> Vec<PlanetaryPosition> {
+    let date = to_astro_date(&dt);
+    let jd = time::julian_day(&date);
+
+    let mut positions = Vec::new();
+
+    // Sun - geocentric ecliptic position (never retrograde)
+    let (sun_ecl, _) = sun::geocent_ecl_pos(jd);
+    let sun_lon_deg = angle::limit_to_360(sun_ecl.long.to_degrees());
+    positions.push(PlanetaryPosition {
+        planet: Planet::Sun,
+        longitude: sun_lon_deg,
+        sign: ZodiacSign::from_longitude(sun_lon_deg),
+        retrograde: false,
+        moon_phase: None,
+    });
+
+    // Mercury
+    let (merc_ecl, _) = planet::geocent_apprnt_ecl_coords(&planet::Planet::Mercury, jd);
+    let merc_lon_deg = angle::limit_to_360(merc_ecl.long.to_degrees());
+    positions.push(PlanetaryPosition {
+        planet: Planet::Mercury,
+        longitude: merc_lon_deg,
+        sign: ZodiacSign::from_longitude(merc_lon_deg),
+        retrograde: is_retrograde(&planet::Planet::Mercury, jd),
+        moon_phase: None,
+    });
+
+    // Venus
+    let (venus_ecl, _) = planet::geocent_apprnt_ecl_coords(&planet::Planet::Venus, jd);
+    let venus_lon_deg = angle::limit_to_360(venus_ecl.long.to_degrees());
+    positions.push(PlanetaryPosition {
+        planet: Planet::Venus,
+        longitude: venus_lon_deg,
+        sign: ZodiacSign::from_longitude(venus_lon_deg),
+        retrograde: is_retrograde(&planet::Planet::Venus, jd),
+        moon_phase: None,
+    });
+
+    // Mars
+    let (mars_ecl, _) = planet::geocent_apprnt_ecl_coords(&planet::Planet::Mars, jd);
+    let mars_lon_deg = angle::limit_to_360(mars_ecl.long.to_degrees());
+    positions.push(PlanetaryPosition {
+        planet: Planet::Mars,
+        longitude: mars_lon_deg,
+        sign: ZodiacSign::from_longitude(mars_lon_deg),
+        retrograde: is_retrograde(&planet::Planet::Mars, jd),
+        moon_phase: None,
+    });
+
+    // Jupiter
+    let (jup_ecl, _) = planet::geocent_apprnt_ecl_coords(&planet::Planet::Jupiter, jd);
+    let jup_lon_deg = angle::limit_to_360(jup_ecl.long.to_degrees());
+    positions.push(PlanetaryPosition {
+        planet: Planet::Jupiter,
+        longitude: jup_lon_deg,
+        sign: ZodiacSign::from_longitude(jup_lon_deg),
+        retrograde: is_retrograde(&planet::Planet::Jupiter, jd),
+        moon_phase: None,
+    });
+
+    // Saturn
+    let (sat_ecl, _) = planet::geocent_apprnt_ecl_coords(&planet::Planet::Saturn, jd);
+    let sat_lon_deg = angle::limit_to_360(sat_ecl.long.to_degrees());
+    positions.push(PlanetaryPosition {
+        planet: Planet::Saturn,
+        longitude: sat_lon_deg,
+        sign: ZodiacSign::from_longitude(sat_lon_deg),
+        retrograde: is_retrograde(&planet::Planet::Saturn, jd),
+        moon_phase: None,
+    });
+
+    // Moon - geocentric ecliptic position (never retrograde)
+    // Calculate moon phase from Sun-Moon angular separation
+    let (moon_ecl, _) = lunar::geocent_ecl_pos(jd);
+    let moon_lon_deg = angle::limit_to_360(moon_ecl.long.to_degrees());
+    let sun_moon_angle = (moon_lon_deg - sun_lon_deg).rem_euclid(360.0);
+    let phase = MoonPhase::from_angle(sun_moon_angle);
+
+    positions.push(PlanetaryPosition {
+        planet: Planet::Moon,
+        longitude: moon_lon_deg,
+        sign: ZodiacSign::from_longitude(moon_lon_deg),
+        retrograde: false,
+        moon_phase: Some(phase),
+    });
+
+    positions
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn test_zodiac_from_longitude() {
+        assert_eq!(ZodiacSign::from_longitude(0.0), ZodiacSign::Aries);
+        assert_eq!(ZodiacSign::from_longitude(30.0), ZodiacSign::Taurus);
+        assert_eq!(ZodiacSign::from_longitude(60.0), ZodiacSign::Gemini);
+        assert_eq!(ZodiacSign::from_longitude(330.0), ZodiacSign::Pisces);
+        assert_eq!(ZodiacSign::from_longitude(360.0), ZodiacSign::Aries);
+        assert_eq!(ZodiacSign::from_longitude(390.0), ZodiacSign::Taurus);
+    }
+
+    #[test]
+    fn test_zodiac_elements() {
+        assert_eq!(ZodiacSign::Aries.element(), Element::Fire);
+        assert_eq!(ZodiacSign::Taurus.element(), Element::Earth);
+        assert_eq!(ZodiacSign::Gemini.element(), Element::Air);
+        assert_eq!(ZodiacSign::Cancer.element(), Element::Water);
+    }
+
+    #[test]
+    fn test_astro_date_conversion() {
+        let dt = Utc.with_ymd_and_hms(2000, 1, 1, 12, 0, 0).unwrap();
+        let date = to_astro_date(&dt);
+        assert_eq!(date.year, 2000);
+        assert_eq!(date.month, 1);
+        assert_eq!(date.decimal_day, 1.0);
+    }
+
+    #[test]
+    fn test_planetary_positions() {
+        let test_time = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
+        let positions = calculate_planetary_positions(test_time);
+
+        assert_eq!(positions.len(), 7);
+
+        let planet_names: Vec<_> = positions.iter().map(|p| p.planet).collect();
+        assert!(planet_names.contains(&Planet::Sun));
+        assert!(planet_names.contains(&Planet::Moon));
+        assert!(planet_names.contains(&Planet::Mercury));
+        assert!(planet_names.contains(&Planet::Venus));
+        assert!(planet_names.contains(&Planet::Mars));
+        assert!(planet_names.contains(&Planet::Jupiter));
+        assert!(planet_names.contains(&Planet::Saturn));
+
+        for pos in &positions {
+            assert!(pos.longitude >= 0.0 && pos.longitude < 360.0,
+                    "Planet {:?} longitude {} out of range", pos.planet, pos.longitude);
+        }
+    }
+
+
+    #[test]
+    fn test_planet_domains() {
+        assert_eq!(Planet::Mercury.domain(), "Communication & Network");
+        assert_eq!(Planet::Mars.domain(), "Energy & CPU-Intensive");
+        assert_eq!(Planet::Venus.domain(), "Harmony & Desktop/UI");
+    }
+
+    #[test]
+    fn test_november_2025_positions() {
+        // November 19, 2025 test
+        let test_time = Utc.with_ymd_and_hms(2025, 11, 19, 22, 7, 46).unwrap();
+        let positions = calculate_planetary_positions(test_time);
+
+        // Expected positions from MoonTracks ephemeris:
+        // Sun: 26°54' Scorpio (210° + 26.9° = ~236.9°)
+        // Mercury: 00°11' Sagittarius (240° + 0.18° = ~240.2°)
+        // Venus: 15°07' Scorpio (210° + 15.12° = ~225.1°)
+        // Mars: 10°28' Sagittarius (240° + 10.47° = ~250.5°)
+        // Jupiter: 25°04' Cancer (90° + 25.07° = ~115.1°)
+        // Saturn: 25°14' Pisces (330° + 25.23° = ~355.2°)
+        // Moon: 13°00' Scorpio (210° + 13° = ~223°)
+
+        for pos in &positions {
+            println!("{:?} at {:.1}° in {:?}", pos.planet, pos.longitude, pos.sign);
+            match pos.planet {
+                Planet::Sun => {
+                    assert_eq!(pos.sign, ZodiacSign::Scorpio, "Sun should be in Scorpio");
+                    assert!(pos.longitude >= 210.0 && pos.longitude < 240.0, "Sun longitude out of expected range");
+                }
+                Planet::Mercury => {
+                    assert_eq!(pos.sign, ZodiacSign::Sagittarius, "Mercury should be in Sagittarius");
+                }
+                Planet::Venus => {
+                    assert_eq!(pos.sign, ZodiacSign::Scorpio, "Venus should be in Scorpio");
+                }
+                Planet::Mars => {
+                    assert_eq!(pos.sign, ZodiacSign::Sagittarius, "Mars should be in Sagittarius");
+                }
+                Planet::Jupiter => {
+                    assert_eq!(pos.sign, ZodiacSign::Cancer, "Jupiter should be in Cancer");
+                }
+                Planet::Saturn => {
+                    assert_eq!(pos.sign, ZodiacSign::Pisces, "Saturn should be in Pisces");
+                }
+                Planet::Moon => {
+                    assert_eq!(pos.sign, ZodiacSign::Scorpio, "Moon should be in Scorpio");
+                }
+            }
+        }
+    }
+}
